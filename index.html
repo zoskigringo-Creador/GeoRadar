@@ -318,11 +318,7 @@
 
                     procesarDatos(processedData, file.name);
                     
-                    // Guardar en LocalStorage (Solo 500 registros para evitar cuelgues)
-                    try {
-                        localStorage.setItem('geoData', JSON.stringify(processedData.slice(0,500)));
-                        localStorage.setItem('geoFileName', file.name);
-                    } catch(e) { console.log('Storage lleno'); }
+                    // ELIMINADO: Guardado en LocalStorage
                     
                 } catch(error) {
                     mostrarToast("Error leyendo el archivo Excel", "error");
@@ -331,7 +327,7 @@
             reader.readAsArrayBuffer(file);
         });
 
-        // Limpiar Datos
+        // Limpiar Datos (Botón Superior y Modal)
         const btnClear = document.getElementById('btn-clear-data');
         const modalConfirm = document.getElementById('confirm-modal');
         const modalContent = document.getElementById('confirm-modal-content');
@@ -351,8 +347,9 @@
         });
 
         document.getElementById('btn-confirm-modal').addEventListener('click', () => {
-            localStorage.removeItem('geoData');
-            localStorage.removeItem('geoFileName');
+            // Ya no hay localStorage que borrar. Simplemente recargamos la página
+            // Omitimos la protección de beforeunload temporalmente para poder recargar
+            window.onbeforeunload = null; 
             location.reload();
         });
 
