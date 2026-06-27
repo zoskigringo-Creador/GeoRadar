@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GeoRadar Comercial - Analítica</title>
+    <title>GeoRadar Comercial</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -11,204 +11,267 @@
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     
-    <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Fuente Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
     <style>
         body { font-family: 'Inter', sans-serif; }
         #map { height: 100%; width: 100%; z-index: 1; }
         
-        /* Ocultar scrollbars para que se vea limpio */
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-track { background: #f1f1f1; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        /* Ocultar el mapa de calor para el mouse (Permite hacer clic a los redonditos) */
+        .leaflet-heatmap-layer {
+            pointer-events: none !important;
+        }
 
-        /* Estilo del Popup idéntico al solicitado */
+        /* Estilo del Popup */
         .custom-popup .leaflet-popup-content-wrapper {
-            border-radius: 6px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+            border-radius: 0.5rem;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
             padding: 0;
         }
         .custom-popup .leaflet-popup-content {
             margin: 0;
-            width: 280px !important;
+            width: 320px !important;
         }
-        .custom-popup .leaflet-popup-close-button {
-            color: #64748b;
-            font-size: 16px;
-            padding: 8px 8px 0 0;
+        
+        /* Notificaciones Toast */
+        #toast-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
         }
-
-        /* CLAVE: Hacer que el mapa de calor no bloquee los clics */
-        .leaflet-heatmap-layer {
-            pointer-events: none !important;
+        .toast {
+            background-color: #333;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            font-size: 14px;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.3s, transform 0.3s;
         }
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        /* Animación de carga para el botón */
+        .spinner {
+            border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top: 3px solid #fff;
+            width: 16px;
+            height: 16px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
-<body class="bg-slate-50 h-screen flex flex-col md:flex-row overflow-hidden text-slate-800">
+<body class="bg-gray-50 h-screen flex flex-col md:flex-row overflow-hidden">
 
-    <!-- Sistema de Toasts (Notificaciones) -->
-    <div id="toast-container" class="fixed bottom-4 left-4 z-[9999] flex flex-col gap-2 pointer-events-none"></div>
-
-    <!-- Modal de Confirmación (Reemplaza al alert nativo) -->
-    <div id="confirm-modal" class="fixed inset-0 bg-slate-900/50 z-[9999] hidden flex items-center justify-center opacity-0 transition-opacity">
-        <div class="bg-white rounded-lg shadow-xl p-5 max-w-sm w-full mx-4 transform scale-95 transition-transform" id="confirm-modal-content">
-            <h3 class="text-lg font-bold text-slate-800 mb-2">¿Eliminar datos?</h3>
-            <p class="text-sm text-slate-600 mb-5">Esta acción borrará todos los datos cargados y reiniciará el mapa. ¿Deseas continuar?</p>
-            <div class="flex justify-end gap-2">
-                <button id="btn-cancel-modal" class="px-3 py-1.5 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded transition-colors">Cancelar</button>
-                <button id="btn-confirm-modal" class="px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded transition-colors">Sí, eliminar</button>
+    <!-- Modal Formato Excel -->
+    <div id="modal-formato" class="fixed inset-0 bg-black/60 z-[9999] hidden flex items-center justify-center backdrop-blur-sm transition-opacity opacity-0">
+        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 transform scale-95 transition-transform p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-gray-800">Formato del Excel</h3>
+                <button id="btn-cerrar-formato" class="text-gray-400 hover:text-gray-600 transition-colors">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <p class="text-sm text-gray-600 mb-4">El sistema generará un archivo Excel con las columnas exactas que necesitas. Llena tus datos debajo de los encabezados y súbelo al sistema.</p>
+            <div class="bg-blue-50 border border-blue-100 rounded-lg p-4 mb-5">
+                <ul class="text-sm text-blue-800 list-disc list-inside space-y-1 font-medium">
+                    <li>Cliente (Código)</li>
+                    <li>Razon Social</li>
+                    <li>Canal</li>
+                    <li>Dinero</li>
+                    <li>Supervisor</li>
+                    <li>Comentario (Vendedor)</li>
+                    <li>Estado (Entregado / No entregado)</li>
+                    <li>Sub Estado Pedido (Motivo)</li>
+                    <li>Chofer</li>
+                    <li>Zona</li>
+                    <li>LATITUD</li>
+                    <li>LONGITUD</li>
+                </ul>
+            </div>
+            <div class="flex justify-end gap-3">
+                <button id="btn-descargar-plantilla" class="px-5 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                    Descargar Plantilla
+                </button>
             </div>
         </div>
     </div>
 
-    <!-- Panel Lateral -->
-    <aside class="w-full md:w-[320px] bg-white shadow-xl flex flex-col h-full z-10 flex-shrink-0">
-        
-        <!-- Encabezado -->
-        <div class="px-4 py-3 border-b border-slate-100 bg-slate-900 text-white">
-            <h1 class="text-lg font-bold flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+    <!-- Modal Confirmación Limpiar -->
+    <div id="modal-limpiar" class="fixed inset-0 bg-black/60 z-[9999] hidden flex items-center justify-center backdrop-blur-sm transition-opacity opacity-0">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full mx-4 transform scale-95 transition-transform p-6 text-center">
+            <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+                <svg class="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
+            </div>
+            <h3 class="text-lg font-bold text-gray-900 mb-2">¿Eliminar datos?</h3>
+            <p class="text-sm text-gray-500 mb-6">Se borrarán todos los registros del mapa y los filtros actuales. Esta acción no se puede deshacer.</p>
+            <div class="flex justify-center gap-3">
+                <button id="btn-cancel-modal" class="px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium transition-colors">Cancelar</button>
+                <button id="btn-confirm-modal" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium shadow-sm transition-colors">Sí, eliminar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container"></div>
+
+    <!-- Panel Lateral -->
+    <aside class="w-full md:w-96 bg-white shadow-[4px_0_24px_rgba(0,0,0,0.02)] flex flex-col h-full z-10 border-r border-gray-100">
+        
+        <!-- Cabecera -->
+        <div class="p-4 border-b border-gray-100 bg-[#0f172a] text-white">
+            <h1 class="text-lg font-bold flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg>
                 GeoRadar Comercial
             </h1>
-            <p class="text-slate-400 text-[10px] uppercase tracking-wide mt-0.5">Analítica de rutas y cobertura</p>
+            <p class="text-slate-400 text-xs mt-0.5 uppercase tracking-wider font-semibold">Analítica de rutas y cobertura</p>
         </div>
 
-        <div class="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+        <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-5 custom-scrollbar">
             
-            <!-- 1. Origen de Datos -->
+            <!-- 1. Carga de Datos -->
             <div>
                 <div class="flex justify-between items-center mb-2">
-                    <h2 class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">1. Datos</h2>
-                    <div class="flex items-center gap-2">
-                        <!-- Botón Descargar Excel -->
-                        <button id="btn-format-guide" class="text-[10px] text-emerald-600 hover:text-emerald-800 hover:underline font-medium flex items-center gap-1 cursor-pointer transition-colors" title="Descargar plantilla Excel">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                            Descargar formato
-                        </button>
-                        <button id="btn-clear-data" class="hidden text-[10px] bg-red-50 text-red-600 px-2 py-0.5 rounded font-semibold hover:bg-red-100 transition-colors">Limpiar datos</button>
+                    <h2 class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">1. Datos</h2>
+                    <div class="flex gap-2">
+                        <button id="btn-ver-formato" class="text-[10px] text-blue-600 hover:text-blue-800 font-semibold bg-blue-50 px-2 py-1 rounded transition-colors">Descargar Formato</button>
+                        <button id="btn-clear-data" class="hidden text-[10px] text-red-500 hover:text-red-700 font-semibold bg-red-50 px-2 py-1 rounded transition-colors">Limpiar datos</button>
                     </div>
                 </div>
                 
-                <label id="upload-label" class="block w-full cursor-pointer bg-slate-50 border border-dashed border-slate-300 hover:border-blue-500 rounded p-2 text-center transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mx-auto text-slate-400 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    <span class="text-xs text-slate-600 font-medium" id="file-name">Subir archivo Excel (.xlsx)</span>
+                <label id="upload-label" class="block w-full cursor-pointer bg-white border border-dashed border-gray-300 hover:border-blue-500 rounded-lg p-3 text-center transition-all group">
+                    <div class="flex flex-col items-center gap-1">
+                        <svg class="h-5 w-5 text-gray-400 group-hover:text-blue-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                        <span class="text-xs text-gray-600 font-medium" id="file-name">Subir archivo Excel (.xlsx)</span>
+                    </div>
                     <input type="file" id="excel-file" accept=".xlsx, .xls" class="hidden">
                 </label>
-                <button id="btn-sample-data" class="mt-2 w-full bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 font-medium py-1.5 px-3 rounded text-xs transition-colors">
-                    Cargar Datos de Prueba
-                </button>
             </div>
 
             <!-- 2. Filtros -->
-            <div id="filters-section" class="opacity-50 pointer-events-none transition-opacity space-y-3">
-                <h2 class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">2. Filtros</h2>
+            <div id="filters-section" class="opacity-50 pointer-events-none transition-opacity flex-1">
+                <h2 class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">2. Filtros</h2>
                 
-                <div class="grid grid-cols-2 gap-2">
-                    <div>
-                        <label class="block text-[10px] font-medium text-slate-500 mb-0.5">Zona</label>
-                        <select id="filter-zona" class="w-full border-slate-200 rounded text-xs p-1.5 border focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-slate-50"></select>
+                <div class="space-y-3">
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-[10px] font-semibold text-gray-600 mb-0.5">Zona</label>
+                            <select id="filter-zona" class="w-full bg-gray-50 border-gray-200 rounded text-xs p-1.5 border focus:border-blue-500 focus:bg-white transition-colors"><option value="all">Todas las zonas</option></select>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-semibold text-gray-600 mb-0.5">Canal</label>
+                            <select id="filter-canal" class="w-full bg-gray-50 border-gray-200 rounded text-xs p-1.5 border focus:border-blue-500 focus:bg-white transition-colors"><option value="all">Todos los canales</option></select>
+                        </div>
                     </div>
-                    <div>
-                        <label class="block text-[10px] font-medium text-slate-500 mb-0.5">Canal</label>
-                        <select id="filter-canal" class="w-full border-slate-200 rounded text-xs p-1.5 border focus:border-blue-500 bg-slate-50"></select>
+
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-[10px] font-semibold text-gray-600 mb-0.5">Cód. Cliente</label>
+                            <input type="text" id="filter-codigo" placeholder="Ej. 1024" class="w-full bg-gray-50 border-gray-200 rounded text-xs p-1.5 border focus:border-blue-500 focus:bg-white transition-colors">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-semibold text-gray-600 mb-0.5">Razón Social</label>
+                            <input type="text" id="filter-nombre" placeholder="Buscar..." class="w-full bg-gray-50 border-gray-200 rounded text-xs p-1.5 border focus:border-blue-500 focus:bg-white transition-colors">
+                        </div>
                     </div>
-                </div>
 
-                <div class="grid grid-cols-2 gap-2">
-                    <div>
-                        <label class="block text-[10px] font-medium text-slate-500 mb-0.5">Cód. Cliente</label>
-                        <input type="text" id="filter-codigo" placeholder="Ej. 1024" class="w-full border-slate-200 rounded text-xs p-1.5 border focus:border-blue-500 bg-slate-50">
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-[10px] font-semibold text-gray-600 mb-0.5">Monto Mín. (Gs)</label>
+                            <input type="number" id="filter-monto-min" placeholder="0" class="w-full bg-gray-50 border-gray-200 rounded text-xs p-1.5 border focus:border-blue-500 focus:bg-white transition-colors">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-semibold text-gray-600 mb-0.5">Monto Máx.</label>
+                            <input type="number" id="filter-monto-max" placeholder="Sin límite" class="w-full bg-gray-50 border-gray-200 rounded text-xs p-1.5 border focus:border-blue-500 focus:bg-white transition-colors">
+                        </div>
                     </div>
+
                     <div>
-                        <label class="block text-[10px] font-medium text-slate-500 mb-0.5">Razón Social</label>
-                        <input type="text" id="filter-nombre" placeholder="Buscar..." class="w-full border-slate-200 rounded text-xs p-1.5 border focus:border-blue-500 bg-slate-50">
+                        <label class="block text-[10px] font-semibold text-gray-600 mb-0.5">Supervisor</label>
+                        <select id="filter-supervisor" class="w-full bg-gray-50 border-gray-200 rounded text-xs p-1.5 border focus:border-blue-500 focus:bg-white transition-colors"><option value="all">Todos los supervisores</option></select>
                     </div>
-                </div>
 
-                <div class="grid grid-cols-2 gap-2">
                     <div>
-                        <label class="block text-[10px] font-medium text-slate-500 mb-0.5">Monto Min. (Gs)</label>
-                        <input type="number" id="filter-monto-min" placeholder="0" class="w-full border-slate-200 rounded text-xs p-1.5 border focus:border-blue-500 bg-slate-50">
+                        <label class="block text-[10px] font-semibold text-gray-600 mb-0.5">Vendedor</label>
+                        <select id="filter-vendedor" class="w-full bg-gray-50 border-gray-200 rounded text-xs p-1.5 border focus:border-blue-500 focus:bg-white transition-colors"><option value="all">Todos los vendedores</option></select>
                     </div>
+                    
                     <div>
-                        <label class="block text-[10px] font-medium text-slate-500 mb-0.5">Monto Máx.</label>
-                        <input type="number" id="filter-monto-max" placeholder="Sin límite" class="w-full border-slate-200 rounded text-xs p-1.5 border focus:border-blue-500 bg-slate-50">
+                        <label class="block text-[10px] font-semibold text-gray-600 mb-0.5">Chofer</label>
+                        <select id="filter-chofer" class="w-full bg-gray-50 border-gray-200 rounded text-xs p-1.5 border focus:border-blue-500 focus:bg-white transition-colors"><option value="all">Todos los choferes</option></select>
                     </div>
-                </div>
 
-                <div>
-                    <label class="block text-[10px] font-medium text-slate-500 mb-0.5">Supervisor</label>
-                    <select id="filter-supervisor" class="w-full border-slate-200 rounded text-xs p-1.5 border focus:border-blue-500 bg-slate-50"></select>
-                </div>
+                    <div>
+                        <label class="block text-[10px] font-semibold text-gray-600 mb-0.5">Motivo Anulación</label>
+                        <select id="filter-motivo" class="w-full bg-gray-50 border-gray-200 rounded text-xs p-1.5 border focus:border-blue-500 focus:bg-white transition-colors"><option value="all">Todos los motivos</option></select>
+                    </div>
 
-                <div>
-                    <label class="block text-[10px] font-medium text-slate-500 mb-0.5">Vendedor</label>
-                    <select id="filter-vendedor" class="w-full border-slate-200 rounded text-xs p-1.5 border focus:border-blue-500 bg-slate-50"></select>
-                </div>
-                
-                <div>
-                    <label class="block text-[10px] font-medium text-slate-500 mb-0.5">Chofer</label>
-                    <select id="filter-chofer" class="w-full border-slate-200 rounded text-xs p-1.5 border focus:border-blue-500 bg-slate-50"></select>
-                </div>
-
-                <div>
-                    <label class="block text-[10px] font-medium text-slate-500 mb-0.5">Motivo Anulación</label>
-                    <select id="filter-motivo" class="w-full border-slate-200 rounded text-xs p-1.5 border focus:border-blue-500 bg-slate-50"></select>
-                </div>
-
-                <div>
-                    <label class="block text-[10px] font-medium text-slate-500 mb-0.5">Estado</label>
-                    <select id="filter-estado" class="w-full border-slate-200 rounded text-xs p-1.5 border focus:border-blue-500 bg-slate-50">
-                        <option value="all" selected>Todos los estados</option>
-                        <option value="Anulado">Solo Anulados</option>
-                        <option value="Entregado">Solo Entregados</option>
-                    </select>
+                    <div>
+                        <label class="block text-[10px] font-semibold text-gray-600 mb-0.5">Estado</label>
+                        <select id="filter-estado" class="w-full bg-gray-50 border-gray-200 rounded text-xs p-1.5 border focus:border-blue-500 focus:bg-white transition-colors">
+                            <option value="all" selected>Todos los estados</option>
+                            <option value="Anulado">Solo Anulados</option>
+                            <option value="Entregado">Solo Entregados</option>
+                        </select>
+                    </div>
                 </div>
             </div>
 
             <!-- 3. Resumen y Acciones -->
-            <div id="stats-section" class="hidden flex flex-col gap-2 pb-4">
+            <div id="stats-section" class="hidden flex flex-col gap-2 mt-2">
                 
-                <div class="bg-slate-900 rounded-lg p-3 text-white">
-                    <h3 class="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-2">Resumen</h3>
-                    <div class="grid grid-cols-4 gap-1 text-center divide-x divide-slate-700">
-                        <!-- Clientes Unicos -->
-                        <div>
-                            <p class="text-base font-bold text-white leading-none" id="stat-total">0</p>
-                            <p class="text-[8px] font-medium text-slate-400 mt-1 leading-tight">Cltes.<br>Únicos</p>
+                <!-- Cuadro de Resumen (4 Datos) -->
+                <div class="bg-[#0f172a] rounded-lg p-3 text-white shadow-inner">
+                    <h3 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Resumen</h3>
+                    <div class="grid grid-cols-4 gap-2 divide-x divide-slate-700 text-center">
+                        <div class="flex flex-col">
+                            <span class="text-xl font-bold text-white leading-none" id="stat-clientes-unicos">0</span>
+                            <span class="text-[9px] text-slate-300 mt-1 leading-tight">Cltes. Únicos</span>
                         </div>
-                        <!-- Clientes Anulados -->
-                        <div>
-                            <p class="text-base font-bold text-orange-400 leading-none" id="stat-clientes-anulados">0</p>
-                            <p class="text-[8px] font-medium text-slate-400 mt-1 leading-tight">Cltes.<br>Anulados</p>
+                        <div class="flex flex-col">
+                            <span class="text-xl font-bold text-orange-400 leading-none" id="stat-clientes-anulados">0</span>
+                            <span class="text-[9px] text-slate-300 mt-1 leading-tight">Cltes. Anul.</span>
                         </div>
-                        <!-- Total Filas/Pedidos -->
-                        <div>
-                            <p class="text-base font-bold text-blue-400 leading-none" id="stat-pedidos">0</p>
-                            <p class="text-[8px] font-medium text-slate-400 mt-1 leading-tight">Total<br>Pedidos</p>
+                        <div class="flex flex-col">
+                            <span class="text-xl font-bold text-blue-400 leading-none" id="stat-total">0</span>
+                            <span class="text-[9px] text-slate-300 mt-1 leading-tight">Total Pedidos</span>
                         </div>
-                        <!-- Pedidos Anulados -->
-                        <div>
-                            <p class="text-base font-bold text-red-400 leading-none" id="stat-anulados">0</p>
-                            <p class="text-[8px] font-medium text-slate-400 mt-1 leading-tight">Pedidos<br>Anul.</p>
+                        <div class="flex flex-col">
+                            <span class="text-xl font-bold text-red-400 leading-none" id="stat-anulados">0</span>
+                            <span class="text-[9px] text-slate-300 mt-1 leading-tight">Pedidos Anul.</span>
                         </div>
                     </div>
                 </div>
 
-                <!-- Botones de Acción -->
-                <button id="btn-draw-route" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-3 rounded text-xs transition-colors flex items-center justify-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
-                    Trazar Recorrido <span id="route-dist" class="font-bold bg-blue-800 px-1.5 rounded">( 0 km )</span>
+                <button id="btn-trazar-ruta" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg text-sm transition-colors shadow flex items-center justify-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+                    <span>Trazar Recorrido</span>
+                    <span id="distancia-ruta" class="bg-blue-800 px-2 py-0.5 rounded text-xs ml-1">( 0 km )</span>
                 </button>
-                <div class="flex gap-2">
-                    <button id="btn-pdf-anulados" class="flex-1 border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 font-medium py-1.5 rounded text-[10px] transition-colors">PDF Anulados</button>
-                    <button id="btn-pdf-entregados" class="flex-1 border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 font-medium py-1.5 rounded text-[10px] transition-colors">PDF Entregados</button>
+
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="btn-pdf-anulados" class="w-full bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 font-medium py-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1">
+                        PDF Anulados
+                    </button>
+                    <button id="btn-pdf-entregados" class="w-full bg-green-50 hover:bg-green-100 text-green-700 border border-green-100 font-medium py-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1">
+                        PDF Entregados
+                    </button>
                 </div>
             </div>
 
@@ -216,85 +279,141 @@
     </aside>
 
     <!-- Contenedor del Mapa -->
-    <main class="flex-1 relative bg-slate-200">
+    <main class="flex-1 relative">
         <div id="map"></div>
     </main>
 
-    <!-- Librerías JS Estables -->
+    <!-- Librerías JS -->
+    <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+    <!-- Leaflet Heatmap Plugin -->
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+    <!-- SheetJS (Para leer Excel) -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- jsPDF & AutoTable (Para generar PDF) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 
     <script>
-        // --- 1. CONFIGURACIÓN DEL MAPA ---
-        // Renderizado en Canvas para evitar bugs visuales con muchos puntos
+        // --- STREAMING_CHUNK:Configuración Inicial... ---
         const map = L.map('map', { preferCanvas: true }).setView([-25.2637, -57.5759], 12);
+
         L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; OpenStreetMap', subdomains: 'abcd', maxZoom: 19
+            attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+            subdomains: 'abcd',
+            maxZoom: 19
         }).addTo(map);
 
-        let globalData = [];
-        let clientesAgrupadosGlobal = [];
-        let markersLayer = L.layerGroup().addTo(map);
-        let routeLayer = L.layerGroup().addTo(map);
-        let heatLayer = null;
+        let globalData = []; 
+        let markersLayer = L.layerGroup().addTo(map); 
+        let heatLayer = null; 
+        let routeLayer = null; 
+        let clientesAgrupadosGlobal = []; 
+        
+        // Elementos DOM
+        const fileInput = document.getElementById('excel-file');
+        const fileNameDisplay = document.getElementById('file-name');
+        const filterSection = document.getElementById('filters-section');
+        const statsSection = document.getElementById('stats-section');
+        const btnClear = document.getElementById('btn-clear-data');
+        const uploadLabel = document.getElementById('upload-label');
+        
+        const filterIds = ['filter-codigo', 'filter-nombre', 'filter-canal', 'filter-monto-min', 'filter-monto-max', 'filter-supervisor', 'filter-vendedor', 'filter-chofer', 'filter-motivo', 'filter-estado', 'filter-zona'];
+        const filters = {};
+        filterIds.forEach(id => {
+            filters[id] = document.getElementById(id);
+            filters[id].addEventListener('input', () => {
+                actualizarFiltrosCascada(id); 
+                actualizarMapa();
+            });
+        });
 
-        // --- 2. MANEJO DE INTERFAZ Y MODALES ---
-        function mostrarToast(mensaje, tipo = 'info') {
+        // --- STREAMING_CHUNK:Manejo de Notificaciones y UI... ---
+        function showToast(message, type = 'info') {
             const container = document.getElementById('toast-container');
             const toast = document.createElement('div');
-            
-            const colores = {
-                success: 'bg-emerald-500',
-                error: 'bg-red-500',
-                info: 'bg-blue-500',
-                warning: 'bg-yellow-500'
-            };
-            
-            toast.className = `${colores[tipo] || colores.info} text-white px-4 py-2 rounded shadow-lg text-sm font-medium transform translate-y-10 opacity-0 transition-all duration-300 flex items-center gap-2`;
-            toast.innerHTML = mensaje;
-            
+            toast.className = `toast ${type === 'error' ? '!bg-red-600' : type === 'success' ? '!bg-green-600' : ''}`;
+            toast.textContent = message;
             container.appendChild(toast);
             
-            requestAnimationFrame(() => {
-                toast.classList.remove('translate-y-10', 'opacity-0');
-            });
-
+            setTimeout(() => toast.classList.add('show'), 10);
             setTimeout(() => {
-                toast.classList.add('opacity-0');
+                toast.classList.remove('show');
                 setTimeout(() => toast.remove(), 300);
             }, 3000);
         }
 
-        // Descarga del Archivo Excel Formato
-        document.getElementById('btn-format-guide').addEventListener('click', () => {
-            const templateData = [
-                ["Cliente", "Razon Social", "Canal", "Dinero", "Supervisor", "Comentario", "Estado", "Sub Estado Pedido", "Chofer", "Zona", "LATITUD", "LONGITUD"],
-                [9374, "BIGGIE S.A, SUC HIPODROMO", "tradi", 423692, "SPV CTAS ESPECIALES", "ANDREA JARA - T25", "Entregado", "-", "NESTOR RUIS DIAZ", "ZONA T25", -25.32155, -57.585623],
-                [9374, "BIGGIE S.A, SUC HIPODROMO", "kcc", 584560, "SPV CTAS ESPECIALES", "ANDREA JARA - T25", "Entregado", "-", "NESTOR RUIS DIAZ", "ZONA T25", -25.32155, -57.585623],
-                [4150, "DESPENSA ALADIN", "tradi", 24750, "SPV MINORISTAS 1", "CHIARA MARTINEZ-T10", "No entregado", "23. CERRADO / AUSENTE EN HORARIO", "NICOLAS VERA", "ZONA T10", -25.291902, -57.629687]
-            ];
-            const ws = XLSX.utils.aoa_to_sheet(templateData);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Formato");
-            XLSX.writeFile(wb, "Plantilla_GeoRadar.xlsx");
-            mostrarToast("Plantilla Excel descargada", "success");
-        });
+        // Modales
+        const modalLimpiar = document.getElementById('modal-limpiar');
+        const modalFormato = document.getElementById('modal-formato');
 
-        // Parseador inteligente de Montos (Quita puntos y comas de Excel)
-        function parseMonto(val) {
-            if (!val) return 0;
-            if (typeof val === 'number') return val;
-            let str = val.toString().replace(/\./g, '').replace(/,/g, '');
-            return parseInt(str) || 0;
+        function openModal(modalElem) {
+            modalElem.classList.remove('hidden');
+            setTimeout(() => {
+                modalElem.classList.remove('opacity-0');
+                modalElem.querySelector('div').classList.remove('scale-95');
+            }, 10);
+        }
+        function closeModal(modalElem) {
+            modalElem.classList.add('opacity-0');
+            modalElem.querySelector('div').classList.add('scale-95');
+            setTimeout(() => modalElem.classList.add('hidden'), 200);
         }
 
-        // --- STREAMING_CHUNK:Lectura y Procesamiento de Excel... ---
-        document.getElementById('excel-file').addEventListener('change', function(e) {
+        document.getElementById('btn-ver-formato').addEventListener('click', () => openModal(modalFormato));
+        document.getElementById('btn-cerrar-formato').addEventListener('click', () => closeModal(modalFormato));
+        
+        btnClear.addEventListener('click', () => openModal(modalLimpiar));
+        document.getElementById('btn-cancel-modal').addEventListener('click', () => closeModal(modalLimpiar));
+        document.getElementById('btn-confirm-modal').addEventListener('click', () => {
+            // Vaciar y recargar
+            globalData = [];
+            window.location.reload();
+        });
+
+        // Generar Excel Plantilla
+        document.getElementById('btn-descargar-plantilla').addEventListener('click', () => {
+            const ws_data = [
+                ["Cliente", "Razon Social", "Canal", "Dinero", "Supervisor", "Comentario", "Estado", "Sub Estado Pedido", "Chofer", "Zona", "LATITUD", "LONGITUD"],
+                [1024, "DESPENSA EJEMPLO", "tradi", "150000", "SPV NORTE", "JUAN PEREZ", "Entregado", "-", "CARLOS RUIZ", "ZONA 1", "-25.2637", "-57.5759"]
+            ];
+            const ws = XLSX.utils.aoa_to_sheet(ws_data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Plantilla");
+            XLSX.writeFile(wb, "Plantilla_GeoRadar.xlsx");
+            closeModal(modalFormato);
+            showToast('Plantilla descargada con éxito', 'success');
+        });
+
+        // --- STREAMING_CHUNK:Lógica de Datos... ---
+        function limpiarNombre(nombre) {
+            if (!nombre || typeof nombre !== 'string') return '';
+            return nombre.split('-')[0].trim();
+        }
+        
+        function limpiarMonto(montoStr) {
+            if (!montoStr) return 0;
+            // Quitar puntos de miles y comas, convertir a número
+            const limpio = String(montoStr).replace(/\./g, '').replace(/,/g, '');
+            const num = parseFloat(limpio);
+            return isNaN(num) ? 0 : num;
+        }
+
+        // Estandarizar estados
+        function normalizarEstado(estado) {
+            if(!estado) return 'Entregado';
+            const est = estado.toString().toLowerCase().trim();
+            if(est.includes('no entregado') || est.includes('anulado') || est.includes('rechazado')) return 'Anulado';
+            return 'Entregado';
+        }
+
+        fileInput.addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (!file) return;
+
+            fileNameDisplay.textContent = file.name;
+            uploadLabel.classList.add('border-blue-500', 'bg-blue-50');
+            btnClear.classList.remove('hidden');
 
             const reader = new FileReader();
             reader.onload = function(event) {
@@ -304,455 +423,445 @@
                     const worksheet = workbook.Sheets[workbook.SheetNames[0]];
                     const jsonData = XLSX.utils.sheet_to_json(worksheet);
                     
-                    const processedData = jsonData.map(item => {
-                        let estadoReal = "Entregado";
-                        const estVal = (item['Estado'] || item['ESTADO'] || '').toString().trim().toLowerCase();
-                        if (estVal !== 'entregado' && estVal !== '') estadoReal = "Anulado";
-
-                        return {
-                            ...item,
-                            MontoLimpio: parseMonto(item['Dinero'] || item['DINERO'] || 0),
-                            EstadoLimpio: estadoReal
-                        };
-                    });
-
-                    procesarDatos(processedData, file.name);
-                    
-                    // ELIMINADO: Guardado en LocalStorage
-                    
-                } catch(error) {
-                    mostrarToast("Error leyendo el archivo Excel", "error");
+                    procesarDatos(jsonData);
+                    showToast('Datos cargados correctamente', 'success');
+                } catch (error) {
+                    showToast('Error leyendo el archivo Excel', 'error');
                 }
             };
             reader.readAsArrayBuffer(file);
         });
 
-        // Limpiar Datos (Botón Superior y Modal)
-        const btnClear = document.getElementById('btn-clear-data');
-        const modalConfirm = document.getElementById('confirm-modal');
-        const modalContent = document.getElementById('confirm-modal-content');
+        function procesarDatos(data) {
+            globalData = data.map(item => {
+                const keys = Object.keys(item);
+                const findKey = (searchStrs) => keys.find(k => searchStrs.some(s => k.toLowerCase().includes(s)));
 
-        btnClear.addEventListener('click', () => {
-            modalConfirm.classList.remove('hidden');
-            requestAnimationFrame(() => {
-                modalConfirm.classList.remove('opacity-0');
-                modalContent.classList.remove('scale-95');
+                const keyLat = findKey(['latitud', 'lat']);
+                const keyLng = findKey(['longitud', 'lon', 'lng']);
+                const keyCliente = findKey(['cliente', 'codigo', 'cod']);
+                const keyNombre = findKey(['razon', 'nombre', 'social']);
+                const keyCanal = findKey(['canal']);
+                const keyMonto = findKey(['dinero', 'monto', 'total']);
+                const keySupervisor = findKey(['supervisor', 'spv']);
+                const keyVendedor = findKey(['comentario', 'vendedor']);
+                const keyEstado = findKey(['estado']);
+                const keyMotivo = findKey(['sub estado', 'motivo', 'razon rechazo']);
+                const keyChofer = findKey(['chofer', 'conductor']);
+                const keyZona = findKey(['zona', 'territorio']);
+
+                return {
+                    LATITUD: keyLat ? item[keyLat] : null,
+                    LONGITUD: keyLng ? item[keyLng] : null,
+                    Cliente: keyCliente ? item[keyCliente] : 'S/N',
+                    RazonSocial: keyNombre ? item[keyNombre] : 'Desconocido',
+                    Canal: keyCanal ? item[keyCanal] : 'N/A',
+                    Monto: keyMonto ? limpiarMonto(item[keyMonto]) : 0,
+                    Supervisor: keySupervisor ? item[keySupervisor] : 'N/A',
+                    Vendedor: keyVendedor ? limpiarNombre(item[keyVendedor]) : 'N/A',
+                    Estado: keyEstado ? normalizarEstado(item[keyEstado]) : 'Entregado',
+                    Motivo: keyMotivo ? item[keyMotivo] : '',
+                    Chofer: keyChofer ? item[keyChofer] : 'N/A',
+                    Zona: keyZona ? item[keyZona] : 'N/A',
+                    FilaOriginal: item // Guardamos la fila entera por si acaso
+                };
+            }).filter(item => item.LATITUD && item.LONGITUD);
+
+            // Inicializar todos los selectores
+            llenarSelectores(globalData);
+
+            filterSection.classList.remove('opacity-50', 'pointer-events-none');
+            statsSection.classList.remove('hidden');
+
+            actualizarMapa(true);
+        }
+
+        // --- STREAMING_CHUNK:Filtros en Cascada... ---
+        function obtenerOpcionesUnicas(data, campo) {
+            return [...new Set(data.map(item => item[campo]).filter(Boolean))].sort();
+        }
+
+        function llenarSelect(selectElement, optionsArray, defaultText) {
+            const currentValue = selectElement.value; // Guardar valor actual
+            selectElement.innerHTML = `<option value="all">${defaultText}</option>`;
+            optionsArray.forEach(opt => {
+                const option = document.createElement('option');
+                option.value = opt;
+                option.textContent = opt;
+                selectElement.appendChild(option);
             });
-        });
-
-        document.getElementById('btn-cancel-modal').addEventListener('click', () => {
-            modalConfirm.classList.add('opacity-0');
-            modalContent.classList.add('scale-95');
-            setTimeout(() => modalConfirm.classList.add('hidden'), 200);
-        });
-
-        document.getElementById('btn-confirm-modal').addEventListener('click', () => {
-            // Ya no hay localStorage que borrar. Simplemente recargamos la página
-            // Omitimos la protección de beforeunload temporalmente para poder recargar
-            window.onbeforeunload = null; 
-            location.reload();
-        });
-
-        // --- STREAMING_CHUNK:Lógica de Filtros en Cascada (Estilo Amazon)... ---
-        function getVal(item, keys) {
-            for(let k of keys) {
-                if(item[k] !== undefined && item[k] !== null && item[k].toString().trim() !== '') return item[k].toString().trim();
+            // Restaurar valor si sigue existiendo en las nuevas opciones
+            if (optionsArray.includes(currentValue)) {
+                selectElement.value = currentValue;
             }
-            return null;
         }
 
-        function limpiarNombre(nombreCompleto) {
-            if (!nombreCompleto) return 'S/D';
-            let str = nombreCompleto.toString();
-            return str.split('-')[0].trim();
+        function llenarSelectores(datosAUsar) {
+            llenarSelect(filters['filter-zona'], obtenerOpcionesUnicas(datosAUsar, 'Zona'), 'Todas las zonas');
+            llenarSelect(filters['filter-canal'], obtenerOpcionesUnicas(datosAUsar, 'Canal'), 'Todos los canales');
+            llenarSelect(filters['filter-supervisor'], obtenerOpcionesUnicas(datosAUsar, 'Supervisor'), 'Todos los supervisores');
+            llenarSelect(filters['filter-vendedor'], obtenerOpcionesUnicas(datosAUsar, 'Vendedor'), 'Todos los vendedores');
+            llenarSelect(filters['filter-chofer'], obtenerOpcionesUnicas(datosAUsar, 'Chofer'), 'Todos los choferes');
+            llenarSelect(filters['filter-motivo'], obtenerOpcionesUnicas(datosAUsar, 'Motivo'), 'Todos los motivos');
         }
 
-        const selects = {
-            zona: document.getElementById('filter-zona'),
-            chofer: document.getElementById('filter-chofer'),
-            supervisor: document.getElementById('filter-supervisor'),
-            vendedor: document.getElementById('filter-vendedor'),
-            canal: document.getElementById('filter-canal'),
-            motivo: document.getElementById('filter-motivo')
-        };
+        // La magia de la cascada
+        function actualizarFiltrosCascada(idCambiado) {
+            // Si el usuario borra la zona, mostramos todos los choferes/vendedores otra vez
+            const valZona = filters['filter-zona'].value;
+            const valChofer = filters['filter-chofer'].value;
+            const valSupervisor = filters['filter-supervisor'].value;
 
-        const inputs = {
-            codigo: document.getElementById('filter-codigo'),
-            nombre: document.getElementById('filter-nombre'),
-            montoMin: document.getElementById('filter-monto-min'),
-            montoMax: document.getElementById('filter-monto-max'),
-            estado: document.getElementById('filter-estado')
-        };
+            let datosCascada = globalData;
 
-        function procesarDatos(data, filename) {
-            globalData = data;
-            document.getElementById('file-name').textContent = filename;
-            document.getElementById('file-name').classList.add('text-blue-600', 'font-bold');
-            document.getElementById('upload-label').classList.add('border-blue-500', 'bg-blue-50');
+            // Filtro Nivel 1: Zona
+            if (valZona !== 'all') {
+                datosCascada = datosCascada.filter(d => d.Zona === valZona);
+            }
             
-            document.getElementById('filters-section').classList.remove('opacity-50', 'pointer-events-none');
-            document.getElementById('stats-section').classList.remove('hidden');
-            btnClear.classList.remove('hidden');
-
-            // Setear "Todos"
-            inputs.estado.value = "all";
-
-            actualizarFiltrosDinamicos();
-
-            const bounds = L.latLngBounds(data.filter(f=>f.LATITUD).map(f => [f.LATITUD, f.LONGITUD]));
-            if(bounds.isValid()) map.fitBounds(bounds, { padding: [50, 50] });
-        }
-
-        function evaluarFila(item, filtros) {
-            if (!item.LATITUD || !item.LONGITUD) return false;
-
-            const fZona = getVal(item, ['Zona', 'ZONA']);
-            const fChofer = getVal(item, ['Chofer', 'CHOFER']);
-            const fSup = getVal(item, ['Supervisor', 'SUPERVISOR']);
-            const fVend = limpiarNombre(getVal(item, ['Comentario', 'COMENTARIO', 'Vendedor']));
-            const fCanal = getVal(item, ['Canal', 'CANAL']);
-            const fMotivo = getVal(item, ['Sub Estado Pedido', 'SUB ESTADO PEDIDO']);
-            const cod = getVal(item, ['Cliente', 'CLIENTE', 'Codigo']);
-            const nom = getVal(item, ['Razon Social', 'RAZON SOCIAL']);
-
-            if (filtros.zona !== 'all' && fZona !== filtros.zona) return false;
-            if (filtros.chofer !== 'all' && fChofer !== filtros.chofer) return false;
-            if (filtros.supervisor !== 'all' && fSup !== filtros.supervisor) return false;
-            if (filtros.vendedor !== 'all' && fVend !== filtros.vendedor) return false;
-            if (filtros.canal !== 'all' && fCanal !== filtros.canal) return false;
-            if (filtros.motivo !== 'all' && fMotivo !== filtros.motivo) return false;
-            
-            if (filtros.estado !== 'all') {
-                if(filtros.estado === 'Anulado' && item.EstadoLimpio !== 'Anulado') return false;
-                if(filtros.estado === 'Entregado' && item.EstadoLimpio !== 'Entregado') return false;
+            // Actualizar opciones que dependen de la Zona (Choferes, Supervisores, Canales)
+            if (idCambiado === 'filter-zona') {
+                llenarSelect(filters['filter-chofer'], obtenerOpcionesUnicas(datosCascada, 'Chofer'), 'Todos los choferes');
+                llenarSelect(filters['filter-supervisor'], obtenerOpcionesUnicas(datosCascada, 'Supervisor'), 'Todos los supervisores');
+                llenarSelect(filters['filter-vendedor'], obtenerOpcionesUnicas(datosCascada, 'Vendedor'), 'Todos los vendedores');
             }
 
-            if (filtros.codigo && cod && !cod.includes(filtros.codigo)) return false;
-            if (filtros.nombre && nom && !nom.toLowerCase().includes(filtros.nombre)) return false;
-            
-            if (filtros.mMin > 0 && item.MontoLimpio < filtros.mMin) return false;
-            if (filtros.mMax > 0 && item.MontoLimpio > filtros.mMax) return false;
-
-            return true;
-        }
-
-        function actualizarFiltrosDinamicos(event = null) {
-            const triggerId = event ? event.target.id : null;
-
-            const filtrosActuales = {
-                zona: selects.zona.value || 'all',
-                chofer: selects.chofer.value || 'all',
-                supervisor: selects.supervisor.value || 'all',
-                vendedor: selects.vendedor.value || 'all',
-                canal: selects.canal.value || 'all',
-                motivo: selects.motivo.value || 'all',
-                estado: inputs.estado.value || 'all',
-                codigo: inputs.codigo.value.trim(),
-                nombre: inputs.nombre.value.trim().toLowerCase(),
-                mMin: parseInt(inputs.montoMin.value) || 0,
-                mMax: parseInt(inputs.montoMax.value) || 0
-            };
-
-            const dataFiltrada = globalData.filter(item => evaluarFila(item, filtrosActuales));
-
-            // Extraer Sets unicos
-            const sets = {
-                zona: new Set(), chofer: new Set(), supervisor: new Set(),
-                vendedor: new Set(), canal: new Set(), motivo: new Set()
-            };
-
-            dataFiltrada.forEach(item => {
-                const z = getVal(item, ['Zona', 'ZONA']); if(z) sets.zona.add(z);
-                const ch = getVal(item, ['Chofer', 'CHOFER']); if(ch) sets.chofer.add(ch);
-                const s = getVal(item, ['Supervisor', 'SUPERVISOR']); if(s) sets.supervisor.add(s);
-                const v = limpiarNombre(getVal(item, ['Comentario'])); if(v) sets.vendedor.add(v);
-                const c = getVal(item, ['Canal', 'CANAL']); if(c) sets.canal.add(c);
-                const m = getVal(item, ['Sub Estado Pedido', 'SUB ESTADO PEDIDO']);
-                if(m && m !== '-' && item.EstadoLimpio === 'Anulado') sets.motivo.add(m);
-            });
-
-            // Llenar Selects si no fueron los que dispararon el evento
-            function rellenar(sel, set, defaultText) {
-                const valObj = sel.value;
-                sel.innerHTML = `<option value="all">${defaultText}</option>`;
-                [...set].sort().forEach(opt => {
-                    sel.innerHTML += `<option value="${opt}">${opt}</option>`;
-                });
-                if ([...set].includes(valObj)) sel.value = valObj;
+            // Filtro Nivel 2: Chofer
+            if (valChofer !== 'all') {
+                datosCascada = datosCascada.filter(d => d.Chofer === valChofer);
             }
 
-            if(triggerId !== 'filter-zona') rellenar(selects.zona, sets.zona, 'Todas las zonas');
-            if(triggerId !== 'filter-chofer') rellenar(selects.chofer, sets.chofer, 'Todos los choferes');
-            if(triggerId !== 'filter-supervisor') rellenar(selects.supervisor, sets.supervisor, 'Todos los supervisores');
-            if(triggerId !== 'filter-vendedor') rellenar(selects.vendedor, sets.vendedor, 'Todos los vendedores');
-            if(triggerId !== 'filter-canal') rellenar(selects.canal, sets.canal, 'Todos los canales');
-            if(triggerId !== 'filter-motivo') rellenar(selects.motivo, sets.motivo, 'Todos los motivos');
-
-            actualizarMapa(filtrosActuales, dataFiltrada);
+            // Actualizar opciones que dependen del Chofer (Vendedores)
+            if (idCambiado === 'filter-zona' || idCambiado === 'filter-chofer') {
+                llenarSelect(filters['filter-vendedor'], obtenerOpcionesUnicas(datosCascada, 'Vendedor'), 'Todos los vendedores');
+            }
         }
 
-        // Asignar Eventos a filtros
-        Object.values(selects).forEach(el => el.addEventListener('change', actualizarFiltrosDinamicos));
-        Object.values(inputs).forEach(el => el.addEventListener('input', actualizarFiltrosDinamicos));
-        inputs.estado.addEventListener('change', actualizarFiltrosDinamicos);
+        function aplicarFiltros() {
+            const vCod = filters['filter-codigo'].value.toLowerCase();
+            const vNom = filters['filter-nombre'].value.toLowerCase();
+            const vCanal = filters['filter-canal'].value;
+            const vMin = parseFloat(filters['filter-monto-min'].value) || 0;
+            const vMax = parseFloat(filters['filter-monto-max'].value) || Infinity;
+            const vSup = filters['filter-supervisor'].value;
+            const vVend = filters['filter-vendedor'].value;
+            const vChof = filters['filter-chofer'].value;
+            const vMot = filters['filter-motivo'].value;
+            const vEst = filters['filter-estado'].value;
+            const vZona = filters['filter-zona'].value;
 
-        // --- STREAMING_CHUNK:Lógica de Mapa y Agrupación... ---
-        function actualizarMapa(filtros, dataFiltradaCruda) {
-            let totalPedidos = dataFiltradaCruda.length; // Total filas
-            let totalAnulados = 0; // Total filas anuladas
+            return globalData.filter(item => {
+                const mCod = !vCod || String(item.Cliente).toLowerCase().includes(vCod);
+                const mNom = !vNom || String(item.RazonSocial).toLowerCase().includes(vNom);
+                const mCanal = vCanal === 'all' || item.Canal === vCanal;
+                const mMonto = item.Monto >= vMin && item.Monto <= vMax;
+                const mSup = vSup === 'all' || item.Supervisor === vSup;
+                const mVend = vVend === 'all' || item.Vendedor === vVend;
+                const mChof = vChof === 'all' || item.Chofer === vChof;
+                const mMot = vMot === 'all' || item.Motivo === vMot;
+                const mEst = vEst === 'all' || item.Estado === vEst;
+                const mZona = vZona === 'all' || item.Zona === vZona;
 
-            const clientesAgrupados = {};
-
-            dataFiltradaCruda.forEach(item => {
-                if(item.EstadoLimpio === 'Anulado') totalAnulados++;
-
-                const cod = (getVal(item, ['Cliente', 'CLIENTE', 'Codigo']) || 'S/C').toString().trim();
-                
-                if (!clientesAgrupados[cod]) {
-                    clientesAgrupados[cod] = {
-                        ...item, 
-                        MontoTotalAgrupado: 0,
-                        esAnulado: false,
-                        motivosSet: new Set(),
-                        canalesSet: new Set(),
-                        cantidadPedidos: 0
-                    };
-                }
-                
-                clientesAgrupados[cod].MontoTotalAgrupado += item.MontoLimpio;
-                clientesAgrupados[cod].cantidadPedidos++;
-                const canal = getVal(item, ['Canal', 'CANAL']);
-                if(canal) clientesAgrupados[cod].canalesSet.add(canal);
-
-                if (item.EstadoLimpio === 'Anulado') {
-                    clientesAgrupados[cod].esAnulado = true;
-                    const motivo = getVal(item, ['Sub Estado Pedido', 'SUB ESTADO PEDIDO']) || '-';
-                    if(motivo !== '-') clientesAgrupados[cod].motivosSet.add(motivo);
-                }
+                return mCod && mNom && mCanal && mMonto && mSup && mVend && mChof && mMot && mEst && mZona;
             });
+        }
 
-            clientesAgrupadosGlobal = Object.values(clientesAgrupados);
-
+        // --- STREAMING_CHUNK:Lógica de Agrupación y Mapa... ---
+        function actualizarMapa(esPrimerCarga = false) {
             markersLayer.clearLayers();
             if (heatLayer) map.removeLayer(heatLayer);
-            routeLayer.clearLayers();
-            document.getElementById('route-dist').textContent = '( 0 km )';
+            if (routeLayer) map.removeLayer(routeLayer);
+            document.getElementById('distancia-ruta').textContent = '( 0 km )';
+
+            const filtrados = aplicarFiltros(); // Estos son PEDIDOS (filas del Excel)
+            
+            // AGRUPACIÓN POR CLIENTE
+            const agrupadosMap = new Map();
+            let totalFilasAnuladas = 0;
+
+            filtrados.forEach(pedido => {
+                const key = pedido.Cliente; // Agrupamos por código de cliente
+                const isAnulado = pedido.Estado === 'Anulado';
+                
+                if (isAnulado) totalFilasAnuladas++;
+
+                if (!agrupadosMap.has(key)) {
+                    // Nuevo cliente
+                    agrupadosMap.set(key, {
+                        ...pedido,
+                        TotalMonto: pedido.Monto,
+                        CantidadPedidos: 1,
+                        TodosCanales: new Set([pedido.Canal]),
+                        TieneAnulados: isAnulado,
+                        TodosMotivos: isAnulado && pedido.Motivo ? new Set([pedido.Motivo]) : new Set()
+                    });
+                } else {
+                    // Agregar a cliente existente
+                    const cl = agrupadosMap.get(key);
+                    cl.TotalMonto += pedido.Monto;
+                    cl.CantidadPedidos++;
+                    cl.TodosCanales.add(pedido.Canal);
+                    if (isAnulado) {
+                        cl.TieneAnulados = true;
+                        if(pedido.Motivo) cl.TodosMotivos.add(pedido.Motivo);
+                    }
+                }
+            });
+
+            clientesAgrupadosGlobal = Array.from(agrupadosMap.values());
 
             const heatData = [];
+            let clientesUnicosAnulados = 0;
 
+            // Dibujar marcadores agrupados
             clientesAgrupadosGlobal.forEach(cliente => {
-                const lat = parseFloat(cliente['LATITUD']);
-                const lng = parseFloat(cliente['LONGITUD']);
+                const lat = parseFloat(cliente.LATITUD);
+                const lng = parseFloat(cliente.LONGITUD);
                 
-                if (cliente.esAnulado) heatData.push([lat, lng, 1]); 
+                if (cliente.TieneAnulados) {
+                    heatData.push([lat, lng, 1]); 
+                    clientesUnicosAnulados++;
+                }
 
-                const markerColor = cliente.esAnulado ? '#ef4444' : '#10b981'; 
-
-                const nombreLimpio = getVal(cliente, ['Razon Social', 'RAZON SOCIAL']) || 'Cliente Desconocido';
-                const codCliente = getVal(cliente, ['Cliente', 'CLIENTE', 'Codigo']) || '-';
-                const vendedor = limpiarNombre(getVal(cliente, ['Comentario']));
-                const supervisor = getVal(cliente, ['Supervisor', 'SUPERVISOR']) || '-';
+                const markerColor = cliente.TieneAnulados ? '#ef4444' : '#10b981'; 
+                const colorTexto = cliente.TieneAnulados ? 'text-red-600 bg-red-100' : 'text-emerald-600 bg-emerald-100';
+                const labelEstado = cliente.TieneAnulados ? 'NO ENTREGADO' : 'ENTREGADO';
                 
-                const textoCanales = [...cliente.canalesSet].join(' / ').toUpperCase() || 'S/D';
-                const textoMotivos = [...cliente.motivosSet].join(', ');
-                const montoFormat = new Intl.NumberFormat('es-PY').format(cliente.MontoTotalAgrupado);
+                const canalesStr = Array.from(cliente.TodosCanales).join(', ').toUpperCase();
+                const motivosStr = Array.from(cliente.TodosMotivos).join(' | ');
 
-                const etiquetaEstado = cliente.esAnulado 
-                    ? `<span style="background:#ef4444;color:white;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:bold;display:inline-block">NO ENTREGADO</span>`
-                    : `<span style="background:#10b981;color:white;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:bold;display:inline-block">ENTREGADO</span>`;
-
-                const recuadroMotivo = (cliente.esAnulado && textoMotivos) 
-                    ? `<div style="background:#fef2f2;border-radius:4px;padding:8px;margin-top:10px;">
-                        <span style="display:block;font-size:9px;color:#ef4444;font-weight:bold;text-transform:uppercase;margin-bottom:2px">Motivo de Rechazo</span>
-                        <span style="color:#991b1b;font-size:12px;font-weight:600">${textoMotivos}</span>
-                       </div>` 
-                    : '';
+                // Formatear monto total con separadores de miles
+                const montoFormateado = cliente.TotalMonto.toLocaleString('es-PY');
 
                 const popupContent = `
-                    <div style="font-family:'Inter',sans-serif;padding:12px;color:#1e293b">
-                        <h3 style="font-size:14px;font-weight:bold;margin:0 0 5px 0">${nombreLimpio}</h3>
-                        <div style="background:#f1f5f9;display:inline-block;padding:3px 6px;border-radius:4px;font-size:11px;color:#475569;margin-bottom:10px;">Cód: ${codCliente}</div>
+                    <div class="p-4 font-inter text-gray-800">
+                        <div class="flex justify-between items-start mb-2">
+                            <h3 class="font-bold text-[15px] pr-2 uppercase leading-tight">${cliente.RazonSocial}</h3>
+                            <button class="text-gray-400 hover:text-gray-600" onclick="map.closePopup()"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+                        </div>
                         
-                        <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
-                            ${etiquetaEstado}
-                            <span style="border:1px solid #e2e8f0;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;color:#64748b;">CANAL: ${textoCanales}</span>
+                        <div class="flex items-center gap-2 mb-4">
+                            <span class="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded font-medium border border-gray-200">Cód: ${cliente.Cliente}</span>
+                            <span class="bg-blue-50 text-blue-700 text-xs px-2 py-1 rounded font-medium border border-blue-100">${cliente.CantidadPedidos} Pedido(s)</span>
                         </div>
 
-                        <div style="border-top:1px solid #e2e8f0;padding-top:10px;display:grid;gap:6px">
-                            <div style="display:flex;justify-content:space-between">
-                                <span style="font-size:11px;color:#64748b;font-weight:600">Cant. Pedidos:</span>
-                                <span style="font-size:12px;font-bold;color:#1e293b;font-weight:bold">${cliente.cantidadPedidos}</span>
+                        <div class="flex gap-2 mb-4">
+                            <span class="${colorTexto} font-bold text-[11px] px-2 py-1 rounded tracking-wide border border-transparent">${labelEstado}</span>
+                            <span class="bg-gray-50 text-gray-500 text-[11px] px-2 py-1 rounded uppercase border border-gray-200">Canal: ${canalesStr}</span>
+                        </div>
+                        
+                        <div class="border-t border-gray-100 pt-3 space-y-2 text-[13px]">
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-500 font-medium">Monto Total:</span>
+                                <span class="font-bold text-gray-900">Gs. ${montoFormateado}</span>
                             </div>
-                            <div style="display:flex;justify-content:space-between">
-                                <span style="font-size:11px;color:#64748b;font-weight:600">Monto:</span>
-                                <span style="font-size:12px;font-weight:bold;color:#1e293b">Gs. ${montoFormat}</span>
+                            <div class="flex justify-between">
+                                <span class="text-gray-500 font-medium">Vendedor:</span>
+                                <span class="text-right">${cliente.Vendedor}</span>
                             </div>
-                            <div style="display:flex;justify-content:space-between">
-                                <span style="font-size:11px;color:#64748b;font-weight:600">Vendedor:</span>
-                                <span style="font-size:11px;color:#475569">${vendedor}</span>
+                            <div class="flex justify-between">
+                                <span class="text-gray-500 font-medium">Chofer:</span>
+                                <span class="text-right">${cliente.Chofer}</span>
                             </div>
-                            <div style="display:flex;justify-content:space-between">
-                                <span style="font-size:11px;color:#64748b;font-weight:600">Supervisor:</span>
-                                <span style="font-size:11px;color:#475569">${supervisor}</span>
+                            <div class="flex justify-between">
+                                <span class="text-gray-500 font-medium">Supervisor:</span>
+                                <span class="text-right">${cliente.Supervisor}</span>
                             </div>
                         </div>
-                        ${recuadroMotivo}
+
+                        ${cliente.TieneAnulados && motivosStr ? `
+                            <div class="mt-4 bg-red-50 p-3 rounded-lg border border-red-100">
+                                <span class="text-[10px] font-bold text-red-500 uppercase tracking-wider block mb-1">Motivo de Rechazo</span>
+                                <p class="text-red-700 text-xs font-medium">${motivosStr}</p>
+                            </div>
+                        ` : ''}
                     </div>
                 `;
 
                 L.circleMarker([lat, lng], {
-                    radius: 6, fillColor: markerColor, color: '#ffffff', weight: 1.5, opacity: 1, fillOpacity: 0.9
-                }).bindPopup(popupContent, {className: 'custom-popup'}).addTo(markersLayer);
+                    radius: 4.5,      // Tamaño preciso de tachuela
+                    fillColor: markerColor,
+                    color: '#ffffff', // Borde blanco impecable
+                    weight: 1.5,
+                    opacity: 1,
+                    fillOpacity: 1    // Puntos sólidos, no transparentes
+                }).bindPopup(popupContent, {className: 'custom-popup'})
+                  .addTo(markersLayer);
             });
 
-            // Calor más suave
-            if (heatData.length > 0 && (filtros.estado === 'all' || filtros.estado === 'Anulado')) {
+            // --- STREAMING_CHUNK: Restaurando el Mapa de Calor Clásico y Suave ---
+            if (heatData.length > 0) {
                 heatLayer = L.heatLayer(heatData, {
-                    radius: 20, blur: 15, maxZoom: 14, minOpacity: 0.4,
-                    gradient: { 0.4: 'blue', 0.6: 'cyan', 0.8: 'lime', 0.9: 'yellow', 1.0: 'red' }
+                    radius: 22,       // Radio contenido para que las auras no sean gigantes
+                    blur: 25,         // Difuminado ligeramente mayor al radio (clave para la suavidad)
+                    maxZoom: 15,      // Evita que el color "queme" o sea muy fuerte al hacer mucho zoom
+                    minOpacity: 0.35, // Deja una sombra azul suave en los bordes
+                    gradient: {
+                        0.2: '#0000ff', // Azul oscuro
+                        0.4: '#00ffff', // Cian (Celeste)
+                        0.6: '#00ff00', // Verde
+                        0.8: '#ffff00', // Amarillo
+                        1.0: '#ff0000'  // Rojo solo en el núcleo más denso
+                    }
                 }).addTo(map);
             }
 
-            // Calcular clientes únicos anulados
-            const totalClientesAnulados = clientesAgrupadosGlobal.filter(c => c.esAnulado).length;
+            // Actualizar 4 Contadores (Protegidos)
+            const elUnicos = document.getElementById('stat-clientes-unicos');
+            const elUnicosAnul = document.getElementById('stat-clientes-anulados');
+            const elTotalFilas = document.getElementById('stat-total');
+            const elFilasAnul = document.getElementById('stat-anulados');
 
-            // Actualizar 4 contadores de forma segura (Previene el error de lectura)
-            const elTotal = document.getElementById('stat-total');
-            if(elTotal) elTotal.textContent = clientesAgrupadosGlobal.length;
-            
-            const elCltesAnulados = document.getElementById('stat-clientes-anulados');
-            if(elCltesAnulados) elCltesAnulados.textContent = totalClientesAnulados;
-            
-            const elPedidos = document.getElementById('stat-pedidos');
-            if(elPedidos) elPedidos.textContent = totalPedidos;
-            
-            const elAnulados = document.getElementById('stat-anulados');
-            if(elAnulados) elAnulados.textContent = totalAnulados;
+            if(elUnicos) elUnicos.textContent = clientesAgrupadosGlobal.length;
+            if(elUnicosAnul) elUnicosAnul.textContent = clientesUnicosAnulados;
+            if(elTotalFilas) elTotalFilas.textContent = filtrados.length;
+            if(elFilasAnul) elFilasAnul.textContent = totalFilasAnuladas;
 
-            // Vuelo de cámara
+            // Vuelo de cámara suave (Se ejecuta siempre que hayan datos)
             if (clientesAgrupadosGlobal.length > 0) {
                 const b = L.latLngBounds(clientesAgrupadosGlobal.map(f => [f.LATITUD, f.LONGITUD]));
-                const current = map.getBounds();
-                if (!current.contains(b) && event !== null) {
-                    map.flyToBounds(b, { padding: [50, 50], duration: 1.5, maxZoom: 14 });
-                }
+                map.flyToBounds(b, { padding: [50, 50], duration: 1.5, maxZoom: 14 });
             }
         }
 
         // --- STREAMING_CHUNK:Lógica de Rutas (OSRM)... ---
-        document.getElementById('btn-draw-route').addEventListener('click', async () => {
+        document.getElementById('btn-trazar-ruta').addEventListener('click', async function() {
             if (clientesAgrupadosGlobal.length < 2) {
-                mostrarToast('Se necesitan al menos 2 clientes para trazar una ruta.', 'warning');
+                showToast('Filtra un chofer o zona para tener al menos 2 puntos.', 'error');
                 return;
             }
             if (clientesAgrupadosGlobal.length > 100) {
-                mostrarToast('Son más de 100 puntos. Se trazará una ruta recta aproximada.', 'info');
-            }
-
-            const btn = document.getElementById('btn-draw-route');
-            const spanDist = document.getElementById('route-dist');
-            const oldSpanHtml = spanDist.outerHTML; // Guardar el recuadro original
-            
-            btn.innerHTML = `Calculando...`;
-            routeLayer.clearLayers();
-
-            const coords = clientesAgrupadosGlobal.map(c => [c.LATITUD, c.LONGITUD]);
-
-            try {
-                if (coords.length <= 100) {
-                    const coordsString = coords.map(c => `${c[1]},${c[0]}`).join(';');
-                    const url = `https://router.project-osrm.org/route/v1/driving/${coordsString}?overview=full&geometries=geojson`;
-                    
-                    const res = await fetch(url);
-                    const data = await res.json();
-
-                    if (data.code === 'Ok') {
-                        const routeGeoJSON = data.routes[0].geometry;
-                        const distanciaKm = (data.routes[0].distance / 1000).toFixed(1);
-                        
-                        L.geoJSON(routeGeoJSON, {
-                            style: { color: '#3b82f6', weight: 4, opacity: 0.8, dashArray: '8, 8' }
-                        }).addTo(routeLayer);
-                        
-                        // Restaurar y actualizar
-                        btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg> Trazar Recorrido ${oldSpanHtml}`;
-                        document.getElementById('route-dist').textContent = `( ${distanciaKm} km )`;
-                        return;
-                    }
-                }
-                throw new Error('Fallback recta');
-            } catch (e) {
-                let distTotal = 0;
-                for(let i=0; i < coords.length-1; i++){
-                    distTotal += map.distance(coords[i], coords[i+1]);
-                }
-                const distanciaKm = (distTotal / 1000).toFixed(1);
-
-                L.polyline(coords, {
-                    color: '#94a3b8', weight: 3, dashArray: '10, 10'
-                }).addTo(routeLayer);
-                
-                btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg> Trazar Recorrido ${oldSpanHtml}`;
-                document.getElementById('route-dist').textContent = `( ~${distanciaKm} km )`;
-                mostrarToast('Ruta satelital falló. Dibujando ruta recta.', 'warning');
-            }
-        });
-
-        // --- STREAMING_CHUNK:Lógica de Reportes PDF... ---
-        function exportarPDF(estado, btnId) {
-            const doc = new window.jspdf.jsPDF('l', 'pt', 'a4'); // Horizontal
-            
-            const dataFiltrada = clientesAgrupadosGlobal.filter(c => 
-                (estado === 'Anulado' && c.esAnulado) || 
-                (estado === 'Entregado' && !c.esAnulado)
-            );
-
-            if (dataFiltrada.length === 0) {
-                mostrarToast(`No hay clientes ${estado.toLowerCase()}s en la vista actual.`, 'warning');
+                showToast('Ruta aproximada (Más de 100 paradas).', 'info');
+                trazarRutaRecta(clientesAgrupadosGlobal);
                 return;
             }
 
-            const formatMoney = new Intl.NumberFormat('es-PY');
-            const tablaCols = ["Código", "Razón Social", "Monto (Gs)", "Vendedor", "Chofer", "Zona", "Motivo (Si aplica)"];
-            const tablaRows = dataFiltrada.map(c => [
-                getVal(c, ['Cliente', 'CLIENTE', 'Codigo']) || '-',
-                getVal(c, ['Razon Social', 'RAZON SOCIAL']) || '-',
-                formatMoney.format(c.MontoTotalAgrupado),
-                limpiarNombre(getVal(c, ['Comentario'])),
-                getVal(c, ['Chofer', 'CHOFER']) || '-',
-                getVal(c, ['Zona', 'ZONA']) || '-',
-                c.esAnulado ? [...c.motivosSet].join(', ') : '-'
-            ]);
-
-            doc.setFontSize(16);
-            doc.text(`Reporte de Pedidos ${estado}s`, 40, 40);
+            // Animación de botón y guardar etiqueta de Km
+            const btn = this;
+            const originalContent = btn.innerHTML;
+            btn.innerHTML = `<span class="spinner"></span> Calculando calles...`;
             
-            doc.setFontSize(10);
-            doc.setTextColor(100);
-            doc.text(`Fecha de exportación: ${new Date().toLocaleDateString()}`, 40, 60);
+            try {
+                // Preparar coordenadas para OSRM (Formato: lng,lat;lng,lat)
+                const coordsString = clientesAgrupadosGlobal.map(c => `${c.LONGITUD},${c.LATITUD}`).join(';');
+                const url = `https://router.project-osrm.org/route/v1/driving/${coordsString}?overview=full&geometries=geojson`;
 
-            doc.autoTable({
-                startY: 80,
-                head: [tablaCols],
-                body: tablaRows,
-                theme: 'striped',
-                headStyles: { fillColor: estado === 'Anulado' ? [220, 38, 38] : [16, 185, 129] },
-                styles: { fontSize: 8 }
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (data.code !== 'Ok') throw new Error('OSRM error');
+
+                const routeCoords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]); // Invertir a lat,lng para Leaflet
+                const distanciaKm = (data.routes[0].distance / 1000).toFixed(1);
+
+                if (routeLayer) map.removeLayer(routeLayer);
+                
+                routeLayer = L.polyline(routeCoords, {
+                    color: '#2563eb',
+                    weight: 4,
+                    opacity: 0.8,
+                    dashArray: '10, 10',
+                    lineJoin: 'round'
+                }).addTo(map);
+
+                // Restaurar botón y actualizar el recuadro de km
+                btn.innerHTML = originalContent;
+                document.getElementById('distancia-ruta').textContent = `( ${distanciaKm} km )`;
+                showToast(`Ruta vial calculada: ${distanciaKm} km`, 'success');
+
+            } catch (error) {
+                // Restaurar botón si falla y dibujar línea recta
+                btn.innerHTML = originalContent;
+                trazarRutaRecta(clientesAgrupadosGlobal);
+                showToast('Ruta recta aproximada (Zonas sin calles)', 'info');
+            }
+        });
+
+        function trazarRutaRecta(puntos) {
+            if (routeLayer) map.removeLayer(routeLayer);
+            const coords = puntos.map(c => [c.LATITUD, c.LONGITUD]);
+            
+            // Cálculo rudimentario de distancia en línea recta
+            let distTotal = 0;
+            for(let i = 0; i < coords.length - 1; i++) {
+                distTotal += map.distance(coords[i], coords[i+1]);
+            }
+            const distanciaKm = (distTotal / 1000).toFixed(1);
+
+            routeLayer = L.polyline(coords, {
+                color: '#94a3b8',
+                weight: 3,
+                dashArray: '5, 10'
+            }).addTo(map);
+
+            document.getElementById('distancia-ruta').textContent = `( ~${distanciaKm} km )`;
+        }
+
+        // --- STREAMING_CHUNK:Exportación a PDF... ---
+        function exportarPDF(tipoEstado, btnId) {
+            const filasFiltradas = aplicarFiltros().filter(item => item.Estado === tipoEstado);
+            
+            if (filasFiltradas.length === 0) {
+                showToast(`No hay pedidos ${tipoEstado.toLowerCase()}s para exportar`, 'error');
+                return;
+            }
+
+            const doc = new jspdf.jsPDF('landscape'); // Horizontal para que entren las columnas
+            
+            doc.setFontSize(14);
+            doc.text(`Reporte de Pedidos ${tipoEstado}s - GeoRadar`, 14, 15);
+            doc.setFontSize(10);
+            const fecha = new Date().toLocaleDateString('es-PY');
+            doc.text(`Fecha de exportación: ${fecha}`, 14, 22);
+
+            const tableColumn = ["Cód", "Cliente", "Canal", "Monto (Gs)", "Zona", "Vendedor", "Chofer", "Motivo"];
+            const tableRows = [];
+
+            filasFiltradas.forEach(p => {
+                const filaData = [
+                    p.Cliente,
+                    p.RazonSocial.substring(0, 30), // Cortar nombres largos
+                    p.Canal,
+                    p.Monto.toLocaleString('es-PY'),
+                    p.Zona,
+                    p.Vendedor,
+                    p.Chofer,
+                    p.Motivo || '-'
+                ];
+                tableRows.push(filaData);
             });
 
-            doc.save(`GeoRadar_${estado}_${new Date().getTime()}.pdf`);
-            mostrarToast(`PDF de ${estado}s descargado.`, 'success');
+            doc.autoTable({
+                head: [tableColumn],
+                body: tableRows,
+                startY: 28,
+                theme: 'grid',
+                styles: { fontSize: 8, cellPadding: 2 },
+                headStyles: { fillColor: tipoEstado === 'Anulado' ? [220, 38, 38] : [16, 185, 129] }
+            });
+
+            doc.save(`GeoRadar_${tipoEstado}_${fecha}.pdf`);
+            showToast('PDF generado con éxito', 'success');
         }
 
         document.getElementById('btn-pdf-anulados').addEventListener('click', () => exportarPDF('Anulado', 'btn-pdf-anulados'));
         document.getElementById('btn-pdf-entregados').addEventListener('click', () => exportarPDF('Entregado', 'btn-pdf-entregados'));
 
-        // Cargar Memoria
+        // --- STREAMING_CHUNK:Protección de Memoria y Pestaña... ---
+        
+        // Limpieza OBLIGATORIA de memoria atascada
         window.addEventListener('load', () => {
-            const savedData = localStorage.getItem('geoData');
-            const savedName = localStorage.getItem('geoFileName');
-            if (savedData && savedName) {
-                procesarDatos(JSON.parse(savedData), savedName);
+            // Esto destruye cualquier rastro de Excels viejos guardados en la PC 
+            // asegurando que GitHub Pages sea seguro para todos.
+            localStorage.clear(); 
+        });
+
+        // Advertencia al intentar cerrar la pestaña o actualizar
+        window.addEventListener('beforeunload', (e) => {
+            if (globalData && globalData.length > 0) {
+                e.preventDefault();
+                // returnValue es requerido para que funcione en Chrome moderno
+                e.returnValue = ''; 
             }
         });
 
